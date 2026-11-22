@@ -123,31 +123,35 @@ button{font:inherit}
 </main>
 
 <script>
-/* ===== Backend =====
-   POST {API_URL}/register <- { name, age, phone, experience, status }   (status: "office" | "individual")
-        201 = saved | 409 { code: "duplicate_phone" }
-   Leave API_URL empty for a local demo (data lives in this browser only). */
-const API_URL = "";
+/* Apps Script: use the deployed /exec URL for an externally hosted copy.
+   When hosted by Apps Script, google.script.run connects automatically. */
+const GOOGLE_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbzOEelvqdHMrL7AZdBLEFkGtBk3FaDDPLn2dIYlhPMwm36r2YQRJoK7BiRNPB9ic7DfgQ/exec";
 
 const $ = id => document.getElementById(id);
 const G = typeof gsap !== "undefined";
 const anim = G && !matchMedia("(prefers-reduced-motion: reduce)").matches;
 
-const demo = {
-  load(){ try{ return JSON.parse(localStorage.getItem("asas_freelancers") || "[]"); }catch(_){ return []; } },
-  save(a){ try{ localStorage.setItem("asas_freelancers", JSON.stringify(a)); }catch(_){} }
-};
 async function send(d){
-  if(API_URL){
-    const r = await fetch(API_URL + "/register", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(d) });
-    if(r.status === 409) throw { code: "duplicate_phone" };
-    if(!r.ok) throw new Error("HTTP " + r.status);
-    return;
+  let result;
+  if(typeof google !== "undefined" && google.script && google.script.run){
+    result = await new Promise((resolve, reject) => {
+      google.script.run.withSuccessHandler(resolve).withFailureHandler(reject).register(d);
+    });
+  }else{
+    if(!GOOGLE_SCRIPT_URL) throw { code: "not_configured" };
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 30000);
+    try{
+      const response = await fetch(GOOGLE_SCRIPT_URL, {
+        method: "POST", headers: { "Content-Type": "text/plain;charset=utf-8" },
+        body: JSON.stringify(d), redirect: "follow", signal: controller.signal
+      });
+      if(!response.ok) throw new Error("HTTP " + response.status);
+      result = await response.json();
+    }finally{ clearTimeout(timeout); }
   }
-  await new Promise(r => setTimeout(r, 700));
-  const a = demo.load();
-  if(a.some(x => x.phone === d.phone)) throw { code: "duplicate_phone" };
-  a.push(d); demo.save(a);
+  if(!result || result.ok !== true || !result.id) throw { code: result && result.code || "save_failed" };
+  return result;
 }
 
 const en = s => s.replace(/[\u0660-\u0669]/g, d => d.charCodeAt(0) - 0x660).replace(/[\u06F0-\u06F9]/g, d => d.charCodeAt(0) - 0x6F0);
@@ -159,14 +163,14 @@ const ARROW = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke
 const EXP = [["0", "بدون خبرة"], ["lt1", "أقل من سنة"], ["1-3", "1 – 3 سنين"], ["3-5", "3 – 5 سنين"], ["5-10", "5 – 10 سنين"], ["10+", "أكتر من 10"]];
 const ST = { office: "مكتب", individual: "فردي" };
 const steps = [
-  { k: "name", mode: "text", q: "إيه اسمك بالكامل؟", sub: "عشان نعرف نناديك.", ph: "اكتب اسمك هنا", ok: v => v.trim().length >= 3, err: "اكتب اسمك الكامل (3 حروف على الأقل)." },
-  { k: "age", mode: "numeric", q: "سنك كام؟", sub: "لازم تكون 18 سنة أو أكتر.", ph: "مثلاً 28", ok: v => { v = +en(v); return v >= 18 && v <= 70; }, err: "السن من 18 لـ 70." },
+  { k: "name", mode: "text", q: "إيه اسمك بالكامل؟", sub: "عشان نعرف نناديك.", ph: "اكتب اسمك هنا", ok: v => v.trim().length >= 3 && v.trim().length <= 120 && !/[\u0000-\u001f]/.test(v), err: "اكتب اسمك الكامل من 3 إلى 120 حرف." },
+  { k: "age", mode: "numeric", q: "سنك كام؟", sub: "لازم تكون 18 سنة أو أكتر.", ph: "مثلاً 28", ok: v => { v = +en(v); return Number.isInteger(v) && v >= 18 && v <= 70; }, err: "السن من 18 لـ 70." },
   { k: "phone", mode: "tel", q: "رقم موبايلك كام؟", sub: "هنتواصل معاك عليه.", ph: "01XXXXXXXXX", ok: v => PH.test(cleanPhone(v)), err: "اكتب رقم موبايل مصري من 11 رقم." },
   { k: "exp", mode: "choice", q: "خبرتك في المبيعات قد إيه؟", sub: "اختار اللي يناسبك.", err: "اختر سنين خبرتك." },
   { k: "status", mode: "status", q: "بتشتغل إزاي؟", sub: "مكتب ولا فردي؟", err: "اختر حالتك: مكتب أو فردي." }
 ];
 const A = { name: "", age: "", phone: "", exp: "", status: "" };
-let cur = -1, busy = false;
+let cur = -1, busy = false, pendingRegistration = null;
 const view = $("view"), sky = $("sky"), LOGO = document.querySelector(".logo").src;
 sky.innerHTML = "<i></i>".repeat(5);
 
@@ -220,12 +224,18 @@ function next(){
 async function submit(){
   busy = true; const nx = $("nx"); nx.disabled = true; nx.classList.add("load"); nx.firstChild.textContent = "جاري الإرسال";
   try{
-    await send({ name: A.name, age: +A.age, phone: A.phone, experience: A.exp, status: A.status });
+    const data = { name: A.name, age: +A.age, phone: A.phone, experience: A.exp, status: A.status };
+    const fingerprint = JSON.stringify(data);
+    if(!pendingRegistration || pendingRegistration.fingerprint !== fingerprint){
+      const id = typeof crypto !== "undefined" && crypto.randomUUID ? crypto.randomUUID() : Date.now().toString(36) + "-" + Math.random().toString(36).slice(2);
+      pendingRegistration = { fingerprint, id };
+    }
+    await send({ ...data, requestId: pendingRegistration.id });
     busy = false; go(5, 1);
   }catch(err){
     busy = false;
     if(err && err.code === "duplicate_phone"){ go(2, -1); setTimeout(() => bad("الرقم ده مسجل قبل كده."), 900); }
-    else { nx.disabled = false; nx.classList.remove("load"); nx.firstChild.textContent = "إرسال البيانات"; $("err").textContent = "حصلت مشكلة أثناء الإرسال. حاول مرة تانية."; }
+    else { nx.disabled = false; nx.classList.remove("load"); nx.firstChild.textContent = "إرسال البيانات"; $("err").textContent = err && err.code === "not_configured" ? "التسجيل غير متاح حاليًا. جاري تجهيز الاتصال، حاول لاحقًا." : "لم يتم تأكيد حفظ بياناتك. حاول مرة تانية."; }
   }
 }
 
