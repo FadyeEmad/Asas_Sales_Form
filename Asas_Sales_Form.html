@@ -41,7 +41,7 @@ button{font:inherit}
 .bar{position:relative;display:flex;align-items:center;justify-content:center;min-height:56px}
 .logo{display:block;width:128px;height:auto;transition:opacity .3s}
 .nav{display:contents;color:#C5D0EA;font-weight:600;font-size:.85rem}
-#count{position:absolute;left:0;top:50%;transform:translateY(-50%)}
+#count{position:absolute;left:0;top:50%;transform:translateY(-50%);font-size:.7rem}
 .back{position:absolute;right:0;top:50%;transform:translateY(-50%);display:flex;align-items:center;gap:6px;background:none;border:0;color:inherit;cursor:pointer;padding:8px 2px}
 .back svg{width:18px;height:18px}
 .back:hover{color:var(--gold-l)}
@@ -178,7 +178,7 @@ function paintSky(){ [...sky.children].forEach((e, k) => { e.className = cur >= 
 function nav(){ $("back").hidden = !(cur >= 1 && cur <= 4); $("count").textContent = cur >= 0 && cur <= 4 ? (cur + 1) + " من 5" : ""; }
 
 function render(i){
-  if(i < 0) return '<img class="hero-logo" src="' + LOGO + '" alt="أساس للاستثمار العقاري"><i class="divider"></i><h1 class="hero-t">انضم لفريق <br>سيلز أساس</h1><p class="sub">سيلز فري لانسر. 5 أسئلة وهنتواصل معاك.</p><div class="row"><button class="next" type="button" data-act="start"><span>ابدأ التسجيل</span>' + ARROW + '</button></div>';
+  if(i < 0) return '<img class="hero-logo" src="' + LOGO + '" alt="أساس للاستثمار العقاري"><i class="divider"></i><h1 class="hero-t">انضم لفريق <br>سيلز أساس</h1><div class="row"><button class="next" type="button" data-act="start"><span>ابدأ التسجيل</span>' + ARROW + '</button></div>';
   if(i >= 5){
     const rows = [["الاسم", esc(A.name)], ["السن", esc(A.age) + " سنة"], ["الموبايل", '<b dir="ltr">' + esc(A.phone) + "</b>"], ["الخبرة", esc(EXP.find(x => x[0] === A.exp)[1])], ["الحالة", ST[A.status]]];
     return '<svg class="okm" viewBox="0 0 84 84" fill="none" aria-hidden="true"><circle id="ring" cx="42" cy="42" r="38" stroke="#F5B800" stroke-width="4"/><path id="tick" d="M25 43l12 12 22-26" stroke="#F5B800" stroke-width="6" stroke-linecap="round" stroke-linejoin="round"/></svg><h2 class="q">تم استلام بياناتك، هنتواصل معاك قريب!</h2><div class="ticket">' + rows.map(r => "<div><span>" + r[0] + "</span><b>" + r[1] + "</b></div>").join("") + "</div>";
